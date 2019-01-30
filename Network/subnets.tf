@@ -1,21 +1,3 @@
-// Set the provider
-provider "aws" {
-  region = "us-east-1"
-  profile = "terraform-user"
-}
-
-//Create the VPC
-resource "aws_vpc" "main" {
-  cidr_block                = "192.168.0.0/19"
-  enable_dns_support        = true
-  enable_dns_hostnames      = false
-  instance_tenancy          = "default"
-  tags = {
-    Name                    = "VPC--TF"
-    Environment             = "var.EnvironmntName"
-  }
-}
-
 //Create the DMZ Subnet
 resource "aws_subnet" "DmzSubnet1a" {
   availability_zone       = "us-east-1a"
@@ -73,29 +55,6 @@ resource "aws_subnet" "PrivateSubnet1b" {
   cidr_block              = "192.168.10.0/23"
   tags = {
     Name                  ="PrivateSubnet1b--TF"
-    Environment           = "${var.EnvironmntName}"
+    Environment           = "QA"
   }
 }
-
-resource "aws_route_table" "mainRouteTable" {
-  vpc_id                  = "${aws_vpc.main.id}"
-  tags = {
-    Name                  = "MainRouteTable--TF"
-    Environment           = "${var.EnvironmntName}"
-  }
-}
-
-resource "aws_internet_gateway" "InternetGateway" {
-  vpc_id = "${aws_vpc.main.id}"
-  tags = {
-    Name                  ="InternetGateway--TF"
-    Environment           = "${var.EnvironmntName}"
-  }
-}
-
-resource "aws_route" "PublicRoute" {
-  route_table_id = "${aws_route_table.mainRouteTable.id}"
-  destination_cidr_block = "0.0.0.0/0"
-  gateway_id = "${aws_internet_gateway.InternetGateway.id}"
-}
-
