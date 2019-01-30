@@ -1,7 +1,11 @@
-variable "EnvironmntName" {
-  default = "QA"
-}
 
 variable "region" {
-  default = "us-east-1"
+  description      = "The AWS region."
+  default          = "us-east-1"
 }
+
+variable "EnvironmntName" {
+  description     = "The AWS region."
+  default         = "QA"
+}
+
