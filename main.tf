@@ -128,7 +128,7 @@ resource "aws_route" "DmzPublicRoute" {
 //Associate the DMZ Subnets to the DMZ route table  AWS::EC2::SubnetRouteTableAssociation
 resource "aws_route_table_association" "DmzRouteAssociation1a" {
   route_table_id = "${aws_route_table.DmzRouteTable.id}"
-  subnet_id = "${aws_subnet.DmzSubnet1b.id}"
+  subnet_id = "${aws_subnet.DmzSubnet1a.id}"
 }
 resource "aws_route_table_association" "DmzRouteAssociation1b" {
   route_table_id = "${aws_route_table.DmzRouteTable.id}"
@@ -201,7 +201,7 @@ resource "aws_route_table" "PrivateRouteTableAZ1" {
   }
 }
 
-//Create the private route for availability zone 2
+//Create the private route for availability zone 1
 resource  "aws_route" "PrivateNatRoute1" {
   route_table_id = "${aws_route_table.PrivateRouteTableAZ1.id}"
   destination_cidr_block = "0.0.0.0/0"
@@ -214,7 +214,7 @@ resource "aws_route_table_association" "PrivateSubnet1aRouteTbleAsociation" {
   subnet_id = "${aws_subnet.PrivateSubnet1a.id}"
 }
 
-//Create the private route table for availability zone 1
+//Create the private route table for availability zone 2
 resource "aws_route_table" "PrivateRouteTableAZ2" {
   vpc_id = "${aws_vpc.main.id}"
     tags = {
@@ -230,7 +230,7 @@ resource  "aws_route" "PrivateNatRoute2" {
   nat_gateway_id = "${aws_nat_gateway.NatGatewayAZ2.id}"
 }
 
-//Create the private route association for availability zone 1
+//Create the private route association for availability zone 2
 resource "aws_route_table_association" "PrivateSubnet1bRouteTbleAsociation" {
   route_table_id = "${aws_route_table.PrivateRouteTableAZ2.id}"
   subnet_id = "${aws_subnet.PrivateSubnet1b.id}"
@@ -241,22 +241,58 @@ resource "aws_iam_role" "Ec2Role" {
   name = "Ec2Role"
   path = "/"
   assume_role_policy = <<EOF
-  {
-    "Version": "2012-10-17",
-         "Statement": [
-          {
-            "Effect": "Allow",
-            "Principal": {
-              "Service": [
-                "ec2.amazonaws.com"
-              ]
-            },
-            "Action": [
-              "sts:AssumeRole"
+{
+  "Version": "2012-10-17",
+       "Statement": [
+        {
+          "Effect": "Allow",
+          "Principal": {
+            "Service": [
+              "ec2.amazonaws.com"
             ]
-          }
-        ]
-  }
-  EOF
+          },
+          "Action": [
+            "sts:AssumeRole"
+          ]
+        }
+      ]
+}
+EOF
 }
 
+// Create instance of profile for Ec2Role
+resource "aws_iam_instance_profile" "Ec2RoleInstanceProfile" {
+  path = "/"
+  role = "${aws_iam_role.Ec2Role.name}"
+}
+
+// Create  a policy\
+resource "aws_iam_policy" "S3buildAccessPolicyTF" {
+  name        = "S3buildAccessPolicyTF"
+  path        = "/"
+  description = "Allows s3 access"
+
+  policy = <<EOF
+{
+  "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Effect": "Allow",
+          "Action": [
+            "s3:*"
+          ],
+          "Resource": [
+            "arn:aws:s3:::qa-storage--dashboard/*",
+            "arn:aws:s3:::qa-storage--dashboard"
+          ]
+        }
+      ]
+}
+EOF
+}
+
+resource "aws_iam_policy_attachment" "test-attach" {
+  name       = "test-attachment"
+  roles      = ["${aws_iam_role.Ec2Role.name}"]
+  policy_arn = "${aws_iam_policy.S3buildAccessPolicyTF.arn}"
+}
