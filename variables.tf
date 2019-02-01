@@ -9,3 +9,10 @@ variable "EnvironmntName" {
   default         = "QA"
 }
 
+variable "amiId" {
+  default = "ami-035be7bafff33b6b6"
+}
+
+variable "userDataPath" {
+  default = "//home//ernie//TerraformProject1//userdata.txt"
+}
