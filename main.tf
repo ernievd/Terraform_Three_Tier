@@ -266,7 +266,7 @@ resource "aws_iam_instance_profile" "Ec2RoleInstanceProfile" {
   role = "${aws_iam_role.Ec2Role.name}"
 }
 
-// Create  a policy\
+// Create  a policy
 resource "aws_iam_policy" "S3buildAccessPolicyTF" {
   name        = "S3buildAccessPolicyTF"
   path        = "/"
@@ -291,8 +291,67 @@ resource "aws_iam_policy" "S3buildAccessPolicyTF" {
 EOF
 }
 
-resource "aws_iam_policy_attachment" "test-attach" {
-  name       = "test-attachment"
+//Attach the policy
+resource "aws_iam_policy_attachment" "s3Attach" {
+  name       = "s3Attach-TF"
   roles      = ["${aws_iam_role.Ec2Role.name}"]
   policy_arn = "${aws_iam_policy.S3buildAccessPolicyTF.arn}"
 }
+
+
+//Create  a load balancer security group - Allow all traffic to reach the load balancer - further rules will allow secure routing of traffic
+resource "aws_security_group" "LoadBalancerSecGrp" {
+  name        = "LoadBalancerSecGrp-TF"
+  description = "Load balancer security group"
+  vpc_id      = "${aws_vpc.main.id}"
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+    ingress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+//Create  a instance security group
+resource "aws_security_group" "instanceSecGrp" {
+  name        = "instanceSecGrp-TF"
+  description = "Enable SSH access via port 22"
+  vpc_id      = "${aws_vpc.main.id}"
+  //depends_on = ["${aws_security_group.loadbalancer}"]
+
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["74.94.81.157/32"]
+  }
+}
+
+// HTTP Traffic only into instances from the load balancer
+resource "aws_security_group_rule" "HttpFromLoadBalancerRule" {
+  type = "ingress"
+  from_port = 80
+  to_port = 80
+  protocol = "tcp"
+  security_group_id = "${aws_security_group.instanceSecGrp.id}"
+  source_security_group_id = "${aws_security_group.LoadBalancerSecGrp.id}"
+  //cidr_blocks = []
+}
+
+// HTTP Traffic only from instances to the load balancer
+resource "aws_security_group_rule" "HttpFromInstanceRule" {
+  type = "egress"
+  from_port = 80
+  to_port = 80
+  protocol = "tcp"
+  security_group_id = "${aws_security_group.LoadBalancerSecGrp.id}"
+  source_security_group_id = "${aws_security_group.instanceSecGrp.id}"
+  //cidr_blocks = []
+}
+
