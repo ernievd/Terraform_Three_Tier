@@ -325,13 +325,15 @@ resource "aws_security_group" "instanceSecGrp" {
   vpc_id      = "${aws_vpc.main.id}"
   //depends_on = ["${aws_security_group.loadbalancer}"]
 
-  ingress {
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = ["74.94.81.157/32"]
-  }
+//  ingress {
+//    from_port   = 22
+//    to_port     = 22
+//    protocol    = "tcp"
+//    cidr_blocks = ["74.94.81.157/32"]
+//  }
 }
+
+
 
 // HTTP Traffic only into instances from the load balancer
 resource "aws_security_group_rule" "HttpFromLoadBalancerRule" {
@@ -342,6 +344,25 @@ resource "aws_security_group_rule" "HttpFromLoadBalancerRule" {
   security_group_id = "${aws_security_group.instanceSecGrp.id}"
   source_security_group_id = "${aws_security_group.LoadBalancerSecGrp.id}"
   //cidr_blocks = []
+}
+
+resource "aws_security_group_rule" "sshRule" {
+  type = "ingress"
+  from_port = 22
+  to_port = 22
+  protocol = "tcp"
+  security_group_id = "${aws_security_group.instanceSecGrp.id}"
+  cidr_blocks = ["74.94.81.157/32"]
+}
+
+resource "aws_security_group_rule" "HttpOutAllRule" {
+  type = "egress"
+  from_port = 80
+  to_port = 80
+  protocol = "tcp"
+  security_group_id = "${aws_security_group.instanceSecGrp.id}"
+  //source_security_group_id = "${aws_security_group.LoadBalancerSecGrp.id}"
+  cidr_blocks = ["0.0.0.0/0"]
 }
 
 // HTTP Traffic only from instances to the load balancer
@@ -385,13 +406,13 @@ resource "aws_lb_target_group" "APP-TargGrp--TF" {
   vpc_id                    = "${aws_vpc.main.id}"
 
   health_check {
-    interval                = "30"
+    interval                = "300"
     path                    = "/"
     protocol                = "HTTP"
-    healthy_threshold       = "2"
-    unhealthy_threshold     = "5"
-    timeout                 = "28"
-    matcher                 = "200"
+//    healthy_threshold       = "3"
+//    unhealthy_threshold     = "5"
+//    timeout                 = "28"
+    matcher                 = "200-299"
   }
 }
 
@@ -410,23 +431,26 @@ resource "aws_lb_listener" "APP-HTTP-Listener--TF" {
 // Create the launch configuration for the load balancer
 resource "aws_launch_configuration" "App_LC--TF" {
   name                      = "QA-App_LC--TF"
+  depends_on = ["aws_iam_instance_profile.Ec2RoleInstanceProfile"]
+  associate_public_ip_address = true
   image_id                  = "${var.amiId}"
   instance_type             = "t2.micro"
-  iam_instance_profile      = "QA-EC2-Role--Dashboard"
+//  iam_instance_profile      = "QA-EC2-Role--Dashboard"
+  iam_instance_profile      = "${aws_iam_instance_profile.Ec2RoleInstanceProfile.name}"
   key_name                  = "udemy-ec2"
   ebs_optimized             = "false"
   enable_monitoring         = "false"
-  security_groups           = ["sg-0b873c7f2a3b27a69"]
+//  security_groups           = ["sg-0b873c7f2a3b27a69"]
+  security_groups           = ["${aws_security_group.instanceSecGrp.id}"]
   user_data                 = "${file("${var.userDataPath}")}"
 
 }
 
-/*
 // Create the autoscaling group
 resource "aws_autoscaling_group" "QA-Prod-autoscale-grp" {
-  availability_zones = ["us-east-1a", "us-east-1b"]
+//  availability_zones = ["us-east-1a", "us-east-1b"]
   name                      = "QA-Prod-autoscale-grp--TF"
-  max_size                  = 4
+  max_size                  = 2
   min_size                  = 2
   health_check_grace_period = 300
   health_check_type         = "ELB"
@@ -434,7 +458,8 @@ resource "aws_autoscaling_group" "QA-Prod-autoscale-grp" {
   launch_configuration      = "${aws_launch_configuration.App_LC--TF.name}"
   target_group_arns         = ["${aws_lb_target_group.APP-TargGrp--TF.arn}"]
   termination_policies      = ["OldestInstance"]
-  vpc_zone_identifier       = "${var.PublicSubnetIDs}"
+  //vpc_zone_identifier       = "${var.PublicSubnetIDs}"
+  vpc_zone_identifier       = ["${aws_subnet.PublicSubnet1a.id}", "${aws_subnet.PublicSubnet1b.id}"]
   tag {
     key                 = "Environment"
     value               = "Production"
@@ -446,76 +471,72 @@ resource "aws_autoscaling_group" "QA-Prod-autoscale-grp" {
       propagate_at_launch = true
   }
 }
+//
+//// Create the notification
+//resource "aws_autoscaling_notification" "asgHttpFromLoadBalancerRule:_activity_notification" {
+//  group_names = [
+//    "${aws_autoscaling_group.QA-Prod-autoscale-grp.name}"
+//  ]
+//
+//  notifications = [
+//    "autoscaling:EC2_INSTANCE_LAUNCH",
+//    "autoscaling:EC2_INSTANCE_TERMINATE",
+//    "autoscaling:EC2_INSTANCE_LAUNCH_ERROR",
+//    "autoscaling:EC2_INSTANyesCE_TERMINATE_ERROR"
+//  ]
+//
+//  topic_arn = "${var.autoscaling_notification_arn}"
+//}
 
-
-
-
-
-// Create the notification
-resource "aws_autoscaling_notification" "asg_activity_notification" {
-  group_names = [
-    "${aws_autoscaling_group.QA-Prod-autoscale-grp.name}"
-  ]
-
-  notifications = [
-    "autoscaling:EC2_INSTANCE_LAUNCH",
-    "autoscaling:EC2_INSTANCE_TERMINATE",
-    "autoscaling:EC2_INSTANCE_LAUNCH_ERROR",
-    "autoscaling:EC2_INSTANCE_TERMINATE_ERROR"
-  ]
-
-  topic_arn = "${var.autoscaling_notification_arn}"
-}
-
-// Create the High CPU alarm
-resource "aws_cloudwatch_metric_alarm" "High_Cpu_Alarm" {
-  alarm_name = "App_High_Cpu_Alarm--TF"
-  comparison_operator = "GreaterThanOrEqualToThreshold"
-  evaluation_periods = "5"
-  metric_name = "CPUUtilization"
-  namespace = "AWS/EC2"
-  period = "60"
-  statistic = "Average"
-  threshold = "80"
-  alarm_description = "This metric monitors ec2 cpu utilization"
-  alarm_actions          = ["${aws_autoscaling_policy.app_scaleup_policy.arn}"]
-  dimensions = {
-    AutoScalingGroupName = "${aws_autoscaling_group.QA-Prod-autoscale-grp.name}"
-  }
-}
-
-// Create the autoscaling up policy
-resource "aws_autoscaling_policy" "app_scaleup_policy" {
-  name                   = "app_scaleup_policy--TF"
-  scaling_adjustment     = 1
-  adjustment_type        = "ChangeInCapacity"
-  cooldown               = 300
-  autoscaling_group_name = "${aws_autoscaling_group.QA-Prod-autoscale-grp.name}"
-}
-
-// Create the Low CPU alarm
-resource "aws_cloudwatch_metric_alarm" "Low_Cpu_Alarm" {
-  alarm_name            = "App_Low_Cpu_Alarm--TF"
-  comparison_operator   = "LessThanOrEqualToThreshold"
-  evaluation_periods    = "5"
-  metric_name           = "CPUUtilization"
-  namespace             = "AWS/EC2"
-  period                = "60"
-  statistic             = "Average"
-  threshold             = "30"
-  alarm_description     = "This metric monitors ec2 cpu utilization"
-  alarm_actions         = ["${aws_autoscaling_policy.app_scaledown_policy.arn}"]
-  dimensions            = {
-      AutoScalingGroupName = "${aws_autoscaling_group.QA-Prod-autoscale-grp.name}"
-  }
-}
-
-// Create the autoscaling down policy
-resource "aws_autoscaling_policy" "app_scaledown_policy" {
-  name                   = "app_scaledown_policy--TF"
-  scaling_adjustment     = -1
-  adjustment_type        = "ChangeInCapacity"
-  cooldown               = 300
-  autoscaling_group_name = "${aws_autoscaling_group.QA-Prod-autoscale-grp.name}"
-}
-*/
+//
+//// Create the High CPU alarm
+//resource "aws_cloudwatch_metric_alarm" "High_Cpu_Alarm" {
+//  alarm_name = "App_High_Cpu_Alarm--TF"
+//  comparison_operator = "GreaterThanOrEqualToThreshold"
+//  evaluation_periods = "5"
+//  metric_name = "CPUUtilization"
+//  namespace = "AWS/EC2"
+//  period = "60"
+//  statistic = "Average"
+//  threshold = "80"
+//  alarm_description = "This metric monitors ec2 cpu utilization"
+//  alarm_actions          = ["${aws_autoscaling_policy.app_scaleup_policy.arn}"]
+//  dimensions = {
+//    AutoScalingGroupName = "${aws_autoscaling_group.QA-Prod-autoscale-grp.name}"
+//  }
+//}
+//
+//// Create the autoscaling up policy
+//resource "aws_autoscaling_policy" "app_scaleup_policy" {
+//  name                   = "app_scaleup_policy--TF"
+//  scaling_adjustment     = 1
+//  adjustment_type        = "ChangeInCapacity"
+//  cooldown               = 300
+//  autoscaling_group_name = "${aws_autoscaling_group.QA-Prod-autoscale-grp.name}"
+//}
+//
+//// Create the Low CPU alarm
+//resource "aws_cloudwatch_metric_alarm" "Low_Cpu_Alarm" {
+//  alarm_name            = "App_Low_Cpu_Alarm--TF"
+//  comparison_operator   = "LessThanOrEqualToThreshold"
+//  evaluation_periods    = "5"
+//  metric_name           = "CPUUtilization"
+//  namespace             = "AWS/EC2"
+//  period                = "60"
+//  statistic             = "Average"
+//  threshold             = "30"
+//  alarm_description     = "This metric monitors ec2 cpu utilization"
+//  alarm_actions         = ["${aws_autoscaling_policy.app_scaledown_policy.arn}"]
+//  dimensions            = {
+//      AutoScalingGroupName = "${aws_autoscaling_group.QA-Prod-autoscale-grp.name}"
+//  }
+//}
+//
+//// Create the autoscaling down policy
+//resource "aws_autoscaling_policy" "app_scaledown_policy" {
+//  name                   = "app_scaledown_policy--TF"
+//  scaling_adjustment     = -1
+//  adjustment_type        = "ChangeInCapacity"
+//  cooldown               = 300
+//  autoscaling_group_name = "${aws_autoscaling_group.QA-Prod-autoscale-grp.name}"
+//}

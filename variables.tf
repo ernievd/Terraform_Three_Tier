@@ -16,3 +16,8 @@ variable "amiId" {
 variable "userDataPath" {
   default = "//home//ernie//TerraformProject1//userdata.txt"
 }
+
+variable "autoscaling_notification_arn" {
+  default = "arn:aws:sns:us-east-1:499000881936:AutoScaling-Activity-Dashboard"
+}
+
